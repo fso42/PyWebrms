@@ -14,6 +14,36 @@ import tornado.web
 import tornado.websocket
 from tornado.options import define, options, parse_command_line
 import sys
+import os
+
+# global constants for audio playback
+FREQ = 44100  # same as audio CD
+BITSIZE = -16  # unsigned 16 bit
+CHANNELS = 1  # 1 == mono, 2 == stereo
+BUFFER = 1024  # audio buffer size in no. of samples
+
+try:
+    import pygame
+
+    # initialize pygame.mixer module
+    pygame.mixer.init(FREQ, BITSIZE, CHANNELS, BUFFER)
+
+    # Sounds taken from http://www.soundjay.com/
+    # TODO: find suitable sound files
+    _sound_library = {'personal_best': pygame.mixer.Sound(os.path.join('sound', 'personal_best.wav')),
+                      'new_record': pygame.mixer.Sound(os.path.join('sound', 'new_record.wav')),
+                      'fueled_up': pygame.mixer.Sound(os.path.join('sound', 'fueled_up.wav'))}
+
+except ImportError, pygame.error:
+    _sound_library = {}
+
+
+def play_sound(path):
+    global _sound_library
+    sound = _sound_library.get(path)
+    if sound:
+        sound.play()
+
 
 class controller_data(dict):
     def __init__(self,idin):
@@ -33,7 +63,8 @@ class controller_data(dict):
 
 class setup_data():
     def __init__(self):
-        self.fuelmode = 4 
+        self.fuelmode = 4
+
 
 def logger(ws,simulation = False):
     
@@ -43,7 +74,7 @@ def logger(ws,simulation = False):
         c_data[i+1]= controller_data(i+1)
 
     sd = setup_data()
-    
+
     i = 0
     run = True
     while run:
@@ -61,6 +92,7 @@ def logger(ws,simulation = False):
             line_saved=0
             fuel_saved_1=0
             fuel_at_start=0
+            best_lap_time=9999
 
             while run:
                 if not simulation:
@@ -114,6 +146,8 @@ def logger(ws,simulation = False):
                                 if int(c_data[i+1]['fuel']*15.0/100.0) != decimal:
                                     print "fuel change car ",i+1,":",c_data[i+1]['fuel'], "->", decimal * 100./15.0
                                     c_data[i+1]['fuel'] = decimal * 100.0/15.0
+                                    if c_data[i + 1]['fuel']>=100:
+                                        play_sound('fueled_up')
                                     ws.write_message(c_data[i+1])
                             
                         
@@ -162,7 +196,13 @@ def logger(ws,simulation = False):
                         elif t_in_s < 0 or t_in_s == 0.0:
                             c_data[cci]['fastest'] = c_data[cci]['fastest'] #only for readability 
                         elif t_in_s < c_data[cci]['fastest']:
-                            c_data[cci]['fastest'] = t_in_s 
+                            c_data[cci]['fastest'] = t_in_s
+                            if t_in_s < best_lap_time:
+                                best_lap_time=t_in_s
+                                play_sound('new_record')
+                            else:
+                                play_sound('personal_best')
+
                         
                         c_data[cci]['prev'] = decimal  
                         ws.write_message(c_data[cci])
