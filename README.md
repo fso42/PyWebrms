@@ -4,6 +4,8 @@ pip install tornado
 
 pip install pyserial
 
+optional sound output if pygame is available
+
 frontend and server done with tornado (no apache/... needed)
 
 set your serial address in webpy_logger
