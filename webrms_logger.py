@@ -3,7 +3,7 @@
 # ! -OUTPUT:
 # -DESCRIPTION: based on webrms by tim
 # -TODO:
-# -Last modified:  Mon Apr 21, 2014  15:22
+# -Last modified:  Tue Apr 22, 2014  00:04
 # @author Felix Schueller
 # -----------------------------------------------------------
 import serial
@@ -44,35 +44,53 @@ def logger(driver,fuel,simulation = False):
 
 
     run = True
+    if simulation :
+        # ser = open('raw_data/car1_no_fuel_min.txt')
+        #ser = open('raw_data/car1_no_fuel.txt')
+        # ser = open('raw_data/car2_fuel_on_over_pitlane.txt')
+        #ser = open('raw_data/car4_fuel_real.txt')
+        ser = open('data/raw.log')
+    else:
+        ser = serial.Serial('/dev/cu.NoZAP-PL2303-000013FA', 19200, timeout=0.05)
+
+    line_saved=0
+    fuel_saved_1=0
+    fuel_at_start=0
+
     while run:
-        if simulation :
-            # ser = open('raw_data/car1_no_fuel_min.txt')
-            #ser = open('raw_data/car1_no_fuel.txt')
-            # ser = open('raw_data/car2_fuel_on_over_pitlane.txt')
-            ser = open('raw_data/car4_fuel_real.txt')
-        else:
-            ser = serial.Serial('/dev/cu.NoZAP-PL2303-000013FA', 19200, timeout=0.05)
+        if not simulation:
+            ser.write("\"?")
+        line = ser.readline()
+        # FSS---remove whitespace and newline 
+        line = line.strip()
+        
+        if line == '' or None:
+            #print 'empty line'
+            time.sleep(.02)
+            continue
+        elif line[0] != '?':
+            #print 'incomplete line, ignoring'
+            continue
+        elif len(line) < 12:
+            print line
+            print 'incomplete line, ignoring'
+            continue
+        
+        if line!=line_saved:
+            #print 'new line detected'
+            #if len(line) > 17:
+                #print 'need to split'
+                #print line
+            #print line.split('$')
 
-        line_saved=0
-        fuel_saved_1=0
-        fuel_at_start=0
+            for msg in line.split('$'):
+                if len(msg) < 12:
+                    continue
+                #print msg
 
-        while run:
-            if not simulation:
-                ser.write("\"?")
-            line = ser.readline()
-            if line == '':
-                time.sleep(.02)
-                continue
-                #run = False
-                #sys.exit()
-
-
-            if line!=line_saved:
-
-                ascii_string = line
+                ascii_string = msg 
                 first_bit = ascii_string[1:2]
-                
+            
                 # 1234567891011121314
                 # :TTTTTTVVS M B B A P$
                 # T = Tank Autos 1-6
@@ -81,6 +99,7 @@ def logger(driver,fuel,simulation = False):
                 # M = Tankmodus 0: aus, 1: normal, 2: real
                 #   mit Pitlane +4
                 if first_bit == ":":
+                    #print 'fuel line'
                     # fuel mode
                     hex_string=ascii_string[11:12].encode('hex')[1:2]
                     # -4 removes pitlane info
@@ -96,7 +115,8 @@ def logger(driver,fuel,simulation = False):
                                 print "fuel change car ",i+1,":",fuel[i+1], "->", decimal * 100./15.0
                                 fuel[i+1] = decimal * 100.0/15.0
                 
-                if first_bit!=":":
+                elif first_bit in '123456':
+                    #print 'time line' 
                     # Info mode
                     ascii_string = ascii_string[4:10]
 
@@ -110,21 +130,23 @@ def logger(driver,fuel,simulation = False):
                     t_in_s =  (decimal - last_ts[cc])/1000.0
                     last_ts[cc]=decimal
                     
-                    if simulation:
-                        if t_in_s > 10 :
-                            t_in_s = 3 
+                    #if simulation:
+                        #if t_in_s > 10 :
+                            #t_in_s = 3 
 
-                    driver[cc].append(t_in_s)
-
-                    print "Car:", cc, '; t:', t_in_s, ', laps:', len(driver[cc]) - 1
-                    if simulation:
-                        time.sleep(t_in_s)
-
-                    datafile = open("./data/car."+str(cc)+".rnd", "a")
-                    datafile.write(str(t_in_s)+ '\n')
-                    datafile.close()
-                line_saved=line
-                time.sleep(.02)
+                    #FSS--- sometimes a double message slips through
+                    # therefore check if time in not 0.0
+                    if t_in_s > 0.1:
+                        driver[cc].append(t_in_s)
+                        print "Car:", cc, '; t:', t_in_s, ', laps:', len(driver[cc]) - 1
+                        datafile = open("./data/car."+str(cc)+".rnd", "a")
+                        datafile.write(str(t_in_s)+ '\n')
+                        datafile.close()
+                        #time.sleep(t_in_s)
+                else: 
+                    print 'unknown line type'
+            line_saved=line
+            time.sleep(.02)
 
     ser.close()
 
