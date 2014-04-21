@@ -3,7 +3,7 @@
 # ! -OUTPUT:
 # -DESCRIPTION: based on webrms by tim
 # -TODO:
-# -Last modified:  Sun Apr 20, 2014  23:56
+# -Last modified:  Mon Apr 21, 2014  15:22
 # @author Felix Schueller
 # -----------------------------------------------------------
 import serial
@@ -37,13 +37,12 @@ class setup_data():
 
 def logger(driver,fuel,simulation = False):
     
-    # FSS---set up 6 driver 
-    #c_data = dict()
-    #for i in range(6):
-        #c_data[i+1]= controller_data(i+1)
+    # FSS---set up last timestamp 
+    last_ts = dict()
+    for i in range(6):
+        last_ts[i+1] = 0.0
 
-    #sd = setup_data()
-    
+
     run = True
     while run:
         if simulation :
@@ -62,24 +61,9 @@ def logger(driver,fuel,simulation = False):
             if not simulation:
                 ser.write("\"?")
             line = ser.readline()
-            
-            ## Driver data reset
-            #if "reset" in ws.last_msg:
-                #who = ws.last_msg.split('reset')[1]
-                #print who
-                #if who == 'a':
-                    #for i in range(6):
-                        #c_data[i+1].reset()
-                #else:
-                   #c_data[int(who)].reset()
-                #ws.last_msg = 'none' 
-                #print "reset driver data ",who
-            
-            ## Stop logger
-            #if ws.last_msg == 'stop':
-                #print "stopping logger"
-                #ws.last_msg = 'none'
-                #ws.write_message('dead')
+            if line == '':
+                time.sleep(.02)
+                continue
                 #run = False
                 #sys.exit()
 
@@ -100,26 +84,20 @@ def logger(driver,fuel,simulation = False):
                     # fuel mode
                     hex_string=ascii_string[11:12].encode('hex')[1:2]
                     # -4 removes pitlane info
-                    #decimal = int(hex_string,16) - 4
-                    #if sd.fuelmode != decimal:
-                        #print "change in fuel mode", decimal
-                        #sd.fuelmode = decimal
+                    decimal = int(hex_string,16) - 4
                     if decimal > 0 : #means fuel is used
                         # loop over all fuel bits
                         for i in range(6):
                             hex_string=ascii_string[i+2:i+3].encode('hex')[1:2]
                             decimal = int(hex_string,16)
                             
-                            # if change is detected, set new fuel, send to websocket
+                            # if change is detected, set new fuel, 
                             if int(fuel[i+1]*15.0/100.0) != decimal:
                                 print "fuel change car ",i+1,":",fuel[i+1], "->", decimal * 100./15.0
                                 fuel[i+1] = decimal * 100.0/15.0
-                        
-                    #line_saved=line
-                    
-
                 
                 if first_bit!=":":
+                    # Info mode
                     ascii_string = ascii_string[4:10]
 
                     hex_string=ascii_string[1:2].encode("hex")[1:2]+ascii_string[0:1].encode("hex")[1:2]
@@ -127,45 +105,38 @@ def logger(driver,fuel,simulation = False):
                     hex_string+=ascii_string[5:6].encode("hex")[1:2]+ascii_string[4:5].encode("hex")[1:2]
 
                     decimal=int(hex_string, 16)
-                    cci = int(cc)
-                    timer=str(decimal)
-                    # print c_data[cci]
-
-                    t_in_s =  (decimal - c_data[cci]['prev'])/1000.0
+                    cc = int(first_bit)
+                    
+                    t_in_s =  (decimal - last_ts[cc])/1000.0
+                    last_ts[cc]=decimal
                     
                     if simulation:
                         if t_in_s > 10 :
                             t_in_s = 3 
-                    
-                    print t_in_s
 
-                    c_data[cci]['time'] = t_in_s 
-                    c_data[cci]['laps'] += 1 
-                    if c_data[cci]['laps'] == 1 :
-                        c_data[cci]['fastest'] = t_in_s 
-                    elif t_in_s < 0 or t_in_s == 0.0:
-                        c_data[cci]['fastest'] = c_data[cci]['fastest'] #only for readability 
-                    elif t_in_s < c_data[cci]['fastest']:
-                        c_data[cci]['fastest'] = t_in_s 
-                    
-                    c_data[cci]['prev'] = decimal  
-                    ws.write_message(c_data[cci])
+                    driver[cc].append(t_in_s)
 
-#                     # print("Car:" + car_controller)
-#                     # print("Timestamp:" + timer +"ms")
-
-#                     # datafile = open("./data/car."+car_controller+".rnd", "a")
-#                     # print >> datafile, timer
-#                     # datafile.close()
-                    line_saved=line
-                    time.sleep(.02)
-                    
+                    print "Car:", cc, '; t:', t_in_s, ', laps:', len(driver[cc]) - 1
                     if simulation:
                         time.sleep(t_in_s)
+
+                    datafile = open("./data/car."+str(cc)+".rnd", "a")
+                    datafile.write(str(t_in_s)+ '\n')
+                    datafile.close()
+                line_saved=line
+                time.sleep(.02)
 
     ser.close()
 
 
 if __name__ == '__main__':
-    logger('test')
+    # FSS---set up 6 driver 
+    driver = dict()
+    fuel = dict()
+    for i in range(6):
+        driver[i+1]= list() 
+        driver[i+1].append(0.0)
+        fuel[i+1] = 100.0
+
+    logger(driver,fuel,True)
 
